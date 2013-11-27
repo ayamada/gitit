@@ -27,6 +27,7 @@ where
 import System.FilePath ((</>), (<.>))
 import Data.FileStore
 import qualified Data.Map as M
+import qualified Data.Set as Set
 import Network.Gitit.Util (readFileUTF8)
 import Network.Gitit.Types
 import Network.Gitit.State
@@ -118,15 +119,18 @@ createDefaultPages conf = do
     let fs = filestoreFromConfig conf
         pt = defaultPageType conf
         toPandoc = readMarkdown
-                   defaultParserState{ stateSmart = True }
-        defOpts = defaultWriterOptions{
-                          writerStandalone = False
-                        , writerHTMLMathMethod = JsMath
-                                 (Just "/js/jsMath/easy/load.js")
-                        , writerLiterateHaskell = showLHSBirdTracks conf
-                        }
+                   def{ readerSmart = True }
+        defOpts = def{ writerStandalone = False
+                     , writerHTMLMathMethod = JsMath
+                              (Just "/js/jsMath/easy/load.js")
+                     , writerExtensions = if showLHSBirdTracks conf
+                                             then Set.insert
+                                                  Ext_literate_haskell
+                                                  $ writerExtensions def
+                                             else writerExtensions def
+                     }
         -- note: we convert this (markdown) to the default page format
-        converter = case defaultPageType conf of
+        converter = case pt of
                        Markdown -> id
                        LaTeX    -> writeLaTeX defOpts . toPandoc
                        HTML     -> writeHtmlString defOpts . toPandoc
@@ -142,11 +146,18 @@ createDefaultPages conf = do
     let helpcontents = helpcontentsInitial ++ "\n\n" ++ helpcontentsMarkup
     usersguidepath <- getDataFileName "README.markdown"
     usersguidecontents <- liftM converter $ readFileUTF8 usersguidepath
+    -- include header in case user changes default format:
+    let header = "---\nformat: " ++
+          show pt ++ (if defaultLHS conf then "+lhs" else "") ++
+          "\n...\n\n"
     -- add front page, help page, and user's guide
     let auth = Author "Gitit" ""
-    createIfMissing fs (frontPage conf <.> "page") auth "Default front page" welcomecontents
-    createIfMissing fs "Help.page" auth "Default help page" helpcontents
-    createIfMissing fs "Gitit User's Guide.page" auth "User's guide (README)" usersguidecontents
+    createIfMissing fs (frontPage conf <.> "page") auth "Default front page"
+      $ header ++ welcomecontents
+    createIfMissing fs "Help.page" auth "Default help page"
+      $ header ++ helpcontents
+    createIfMissing fs "Gitit User’s Guide.page" auth "User’s guide (README)"
+      $ header ++ usersguidecontents
 
 createIfMissing :: FileStore -> FilePath -> Author -> Description -> String -> IO ()
 createIfMissing fs p a comm cont = do

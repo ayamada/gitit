@@ -91,6 +91,8 @@ data Config = Config {
   maxUploadSize        :: Integer,
   -- | Max size of page uploads
   maxPageSize          :: Integer,
+  -- | IP address to bind to
+  address              :: String,
   -- | Port number to serve content on
   portNumber           :: Int,
   -- | Print debug info to the console?
@@ -318,7 +320,7 @@ instance FromData Params where
          pa <- look' "patterns"       `mplus` return ""
          gt <- look' "gotopage"       `mplus` return ""
          ft <- look' "filetodelete"   `mplus` return ""
-         me <- lookRead "messages"   `mplus` return []
+         me <- looks "message"
          fm <- liftM Just (look' "from") `mplus` return Nothing
          to <- liftM Just (look' "to")   `mplus` return Nothing
          et <- liftM (Just . filter (/='\r')) (look' "editedText")
@@ -400,7 +402,7 @@ type Handler = GititServerPart Response
 fromEntities :: String -> String
 fromEntities ('&':xs) =
   case lookupEntity ent of
-        Just c  -> c : fromEntities rest
+        Just c  -> c ++ fromEntities rest
         Nothing -> '&' : fromEntities xs
     where (ent, rest) = case break (\c -> isSpace c || c == ';') xs of
                              (zs,';':ys) -> (zs,ys)

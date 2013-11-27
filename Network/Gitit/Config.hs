@@ -66,6 +66,7 @@ extractConfig cp = do
       cfRepositoryPath <- get cp "DEFAULT" "repository-path"
       cfDefaultPageType <- get cp "DEFAULT" "default-page-type"
       cfMathMethod <- get cp "DEFAULT" "math"
+      cfMathjaxScript <- get cp "DEFAULT" "mathjax-script"
       cfShowLHSBirdTracks <- get cp "DEFAULT" "show-lhs-bird-tracks"
       cfRequireAuthentication <- get cp "DEFAULT" "require-authentication"
       cfAuthenticationMethod <- get cp "DEFAULT" "authentication-method"
@@ -79,6 +80,7 @@ extractConfig cp = do
       cfTableOfContents <- get cp "DEFAULT" "table-of-contents"
       cfMaxUploadSize <- get cp "DEFAULT" "max-upload-size"
       cfMaxPageSize <- get cp "DEFAULT" "max-page-size"
+      cfAddress <- get cp "DEFAULT" "address"
       cfPort <- get cp "DEFAULT" "port"
       cfDebugMode <- get cp "DEFAULT" "debug-mode"
       cfFrontPage <- get cp "DEFAULT" "front-page"
@@ -110,7 +112,7 @@ extractConfig cp = do
       let (pt, lhs) = parsePageType cfDefaultPageType
       let markupHelpFile = show pt ++ if lhs then "+LHS" else ""
       markupHelpPath <- liftIO $ getDataFileName $ "data" </> "markupHelp" </> markupHelpFile
-      markupHelpText <- liftM (writeHtmlString defaultWriterOptions . readMarkdown defaultParserState) $
+      markupHelpText <- liftM (writeHtmlString def . readMarkdown def) $
                             liftIO $ readFileUTF8 markupHelpPath
 
       mimeMap' <- liftIO $ readMimeTypesFile cfMimeTypesFile
@@ -131,7 +133,7 @@ extractConfig cp = do
         , mathMethod           = case map toLower cfMathMethod of
                                       "jsmath"   -> JsMathScript
                                       "mathml"   -> MathML
-                                      "mathjax"  -> MathJax "https://d3eoax9i5htok0.cloudfront.net/mathjax/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML"
+                                      "mathjax"  -> MathJax cfMathjaxScript
                                       "google"   -> WebTeX "http://chart.apis.google.com/chart?cht=tx&chl="
                                       _          -> RawTeX
         , defaultLHS           = lhs
@@ -167,6 +169,7 @@ extractConfig cp = do
         , tableOfContents      = cfTableOfContents
         , maxUploadSize        = readSize "max-upload-size" cfMaxUploadSize
         , maxPageSize          = readSize "max-page-size" cfMaxPageSize
+        , address              = cfAddress
         , portNumber           = readNumber "port" cfPort
         , debugMode            = cfDebugMode
         , frontPage            = cfFrontPage

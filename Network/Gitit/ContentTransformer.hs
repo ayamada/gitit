@@ -86,10 +86,10 @@ import Network.URI (isUnescapedInURI)
 import Network.URL (encString)
 import Prelude hiding (catch)
 import System.FilePath
+import qualified Text.Pandoc.Builder as B
 import Text.HTML.SanitizeXSS (sanitizeBalance)
 import Text.Highlighting.Kate
 import Text.Pandoc hiding (MathML, WebTeX, MathJax)
-import Text.Pandoc.Shared (ObfuscationMethod(..))
 import Text.XHtml hiding ( (</>), dir, method, password, rev )
 import Text.StringTemplate (StringTemplate)
 #if MIN_VERSION_blaze_html(0,5,0)
@@ -98,10 +98,12 @@ import Text.Blaze.Html.Renderer.String as Blaze ( renderHtml )
 import Text.Blaze.Renderer.String as Blaze ( renderHtml )
 #endif
 import qualified Data.Text as T
+import qualified Data.Set as Set
 import qualified Data.ByteString as S (concat)
 import qualified Data.ByteString.Lazy as L (toChunks, fromChunks)
 import qualified Data.FileStore as FS
 import qualified Text.Pandoc as Pandoc
+
 --
 -- ContentTransformer runners
 --
@@ -363,7 +365,7 @@ pandocToHtml pandocContents = do
   cfg <- lift getConfig
   return $ primHtml $ T.unpack .
            (if xssSanitize cfg then sanitizeBalance else id) . T.pack $
-           writeHtmlString defaultWriterOptions{
+           writeHtmlString def{
                         writerStandalone = True
                       , writerTemplate = "$if(toc)$<div id=\"TOC\">\n$toc$\n</div>\n$endif$\n$body$"
                       , writerHTMLMathMethod =
@@ -374,7 +376,11 @@ pandocToHtml pandocContents = do
                                  _      -> JsMath (Just $ base' ++
                                                       "/js/jsMath/easy/load.js")
                       , writerTableOfContents = toc
-                      , writerLiterateHaskell = bird
+                      , writerExtensions = if bird
+                                              then Set.insert
+                                                   Ext_literate_haskell
+                                                   $ writerExtensions def
+                                              else writerExtensions def
                       -- note: javascript obfuscation gives problems on preview
                       , writerEmailObfuscation = ReferenceObfuscation
                       } pandocContents
@@ -474,8 +480,8 @@ addPageTitleToPandoc :: String -> Pandoc -> ContentTransformer Pandoc
 addPageTitleToPandoc title' (Pandoc _ blocks) = do
   updateLayout $ \layout -> layout{ pgTitle = title' }
   return $ if null title'
-              then Pandoc (Meta [] [] []) blocks
-              else Pandoc (Meta [Str title'] [] []) blocks
+              then Pandoc nullMeta blocks
+              else Pandoc (B.setMeta "title" (B.str title') nullMeta) blocks
 
 -- | Adds javascript links for math support.
 addMathSupport :: a -> ContentTransformer a
@@ -527,8 +533,11 @@ updateLayout f = do
 
 readerFor :: PageType -> Bool -> String -> Pandoc
 readerFor pt lhs =
-  let defPS = defaultParserState{ stateSmart = True
-                                , stateLiterateHaskell = lhs }
+  let defPS = def{ readerSmart = True
+                 , readerExtensions = if lhs
+                                         then Set.insert Ext_literate_haskell
+                                              $ readerExtensions def
+                                         else readerExtensions def }
   in case pt of
        RST      -> readRST defPS
        Markdown -> readMarkdown defPS
@@ -572,9 +581,10 @@ inlinesToString = concatMap go
                LineBreak               -> " "
                Math DisplayMath s      -> "$$" ++ s ++ "$$"
                Math InlineMath s       -> "$" ++ s ++ "$"
-               RawInline "tex" s       -> s
+               RawInline (Format "tex") s -> s
                RawInline _ _           -> ""
                Link xs _               -> concatMap go xs
                Image xs _              -> concatMap go xs
                Note _                  -> ""
+               Span _ xs               -> concatMap go xs
 

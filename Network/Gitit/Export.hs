@@ -23,7 +23,7 @@ module Network.Gitit.Export ( exportFormats ) where
 import Text.Pandoc hiding (HTMLMathMethod(..))
 import qualified Text.Pandoc as Pandoc
 import Text.Pandoc.SelfContained as SelfContained
-import Text.Pandoc.Shared (escapeStringUsing, readDataFile)
+import Text.Pandoc.Shared (escapeStringUsing, readDataFileUTF8)
 import Network.Gitit.Server
 import Network.Gitit.Framework (pathForPage, getWikiBase)
 import Network.Gitit.Util (withTempDir, readFileUTF8)
@@ -41,15 +41,19 @@ import Control.Exception (throwIO)
 import System.Environment (getEnvironment)
 import System.Exit (ExitCode(..))
 import System.IO (openTempFile)
-import System.Directory (getCurrentDirectory, setCurrentDirectory, removeFile)
+import System.Directory (getCurrentDirectory, setCurrentDirectory, removeFile,
+                         doesFileExist)
 import System.Process (runProcess, waitForProcess)
 import Codec.Binary.UTF8.String (encodeString)
 import Text.HTML.SanitizeXSS
+import Text.Pandoc.Writers.RTF (writeRTFWithEmbeddedImages)
 import qualified Data.Text as T
 import Data.List (isPrefixOf)
+import Text.Highlighting.Kate (styleToCss, pygments)
+import Paths_gitit (getDataFileName)
 
 defaultRespOptions :: WriterOptions
-defaultRespOptions = defaultWriterOptions { writerStandalone = True }
+defaultRespOptions = def { writerStandalone = True }
 
 respond :: String
         -> String
@@ -74,13 +78,10 @@ respondX templ mimetype ext fn opts page doc = do
   doc' <- if ext `elem` ["odt","pdf","epub","docx","rtf"]
              then fixURLs page doc
              else return doc
-  doc'' <- if ext == "rtf"
-              then liftIO $ bottomUpM rtfEmbedImage doc'
-              else return doc'
   respond mimetype ext (fn opts{writerTemplate = template
-                               ,writerSourceDirectory = repositoryPath cfg
+                               ,writerSourceURL = Just $ baseUrl cfg
                                ,writerUserDataDir = pandocUserData cfg})
-          page doc''
+          page doc'
 
 respondS :: String -> String -> String -> (WriterOptions -> Pandoc -> String)
           -> WriterOptions -> String -> Pandoc -> Handler
@@ -114,8 +115,8 @@ respondSlides templ slideVariant page doc = do
                $ T.pack body'
     variables' <- if mathMethod cfg == MathML
                      then do
-                        s <- liftIO $ readDataFile (pandocUserData cfg) $
-                                  "data"</>"MathMLinHTML.js"
+                        s <- liftIO $ readDataFileUTF8 (pandocUserData cfg)
+                                  "MathMLinHTML.js"
                         return [("mathml-script", s)]
                      else return []
     template' <- liftIO $ getDefaultTemplate (pandocUserData cfg) templ
@@ -124,7 +125,7 @@ respondSlides templ slideVariant page doc = do
                      Left e   -> liftIO $ throwIO e
     dzcore <- if templ == "dzslides"
                   then do
-                    dztempl <- liftIO $ readDataFile (pandocUserData cfg)
+                    dztempl <- liftIO $ readDataFileUTF8 (pandocUserData cfg)
                            $ "dzslides" </> "template.html"
                     return $ unlines
                         $ dropWhile (not . isPrefixOf "<!-- {{{{ dzslides core")
@@ -132,9 +133,9 @@ respondSlides templ slideVariant page doc = do
                   else return ""
     let h = writeHtmlString opts'{
                 writerVariables =
-                  ("body",body''):("dzslides-core",dzcore):variables'
+                  ("body",body''):("dzslides-core",dzcore):("highlighting-css",pygmentsCss):variables'
                ,writerTemplate = template
-               ,writerSourceDirectory = repositoryPath cfg
+               ,writerSourceURL = Just $ baseUrl cfg
                ,writerUserDataDir = pandocUserData cfg
                } (Pandoc meta [])
     h' <- liftIO $ makeSelfContained (pandocUserData cfg) h
@@ -152,8 +153,8 @@ respondConTeXt = respondS "context" "application/x-context" "tex"
 
 
 respondRTF :: String -> Pandoc -> Handler
-respondRTF = respondS "rtf" "application/rtf" "rtf"
-  writeRTF defaultRespOptions
+respondRTF = respondX "rtf" "application/rtf" "rtf"
+  (\o d -> fromString `fmap` writeRTFWithEmbeddedImages o d) defaultRespOptions
 
 respondRST :: String -> Pandoc -> Handler
 respondRST = respondS "rst" "text/plain; charset=utf-8" ""
@@ -197,16 +198,16 @@ respondMediaWiki = respondS "mediawiki" "text/plain; charset=utf-8" ""
 
 respondODT :: String -> Pandoc -> Handler
 respondODT = respondX "opendocument" "application/vnd.oasis.opendocument.text"
-              "odt" (writeODT Nothing) defaultRespOptions
+              "odt" writeODT defaultRespOptions
 
 respondEPUB :: String -> Pandoc -> Handler
-respondEPUB = respondX "html" "application/epub+zip" "epub" (writeEPUB Nothing [])
+respondEPUB = respondX "html" "application/epub+zip" "epub" writeEPUB
                defaultRespOptions
 
 respondDocx :: String -> Pandoc -> Handler
 respondDocx = respondX "native"
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  "docx" (writeDocx Nothing) defaultRespOptions
+  "docx" writeDocx defaultRespOptions
 
 --- | Run shell command and return error status.  Assumes
 -- UTF-8 locale. Note that this does not actually go through \/bin\/sh!
@@ -276,16 +277,27 @@ respondPDF page old_pndc = fixURLs page old_pndc >>= \pndc -> do
 -- images in the staticDir with their correct absolute file path.
 fixURLs :: String -> Pandoc -> GititServerPart Pandoc
 fixURLs page pndc = do
-    curdir <- liftIO getCurrentDirectory
     cfg <- getConfig
+    defaultStatic <- liftIO $ getDataFileName $ "data" </> "static"
 
-    let go (Image ils (url, title)) = Image ils (fixURL url, title)
-        go x                        = x
+    let static = staticDir cfg
+    let repoPath = repositoryPath cfg
 
-        fixURL ('/':url) = curdir </> staticDir cfg </> url
-        fixURL url       = curdir </> repositoryPath cfg </> takeDirectory page </> url
+    let go (Image ils (url, title)) = do
+           fixedURL <- fixURL url
+           return $ Image ils (fixedURL, title)
+        go x                        = return x
 
-    return $ bottomUp go pndc
+        fixURL ('/':url) = resolve url
+        fixURL url       = resolve $ takeDirectory page </> url
+
+        resolve p = do
+           sp <- doesFileExist $ static </> p
+           dsp <- doesFileExist $ defaultStatic </> p
+           return (if sp then static </> p
+                   else (if dsp then defaultStatic </> p
+                         else repoPath </> p))
+    liftIO $ bottomUpM go pndc
 
 exportFormats :: Config -> [(String, String -> Pandoc -> Handler)]
 exportFormats cfg = if pdfExport cfg
@@ -310,3 +322,6 @@ exportFormats cfg = if pdfExport cfg
                 , ("ODT",       respondODT)
                 , ("Docx",      respondDocx)
                 , ("RTF",       respondRTF) ]
+
+pygmentsCss :: String
+pygmentsCss = styleToCss pygments

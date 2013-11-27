@@ -77,7 +77,8 @@ import Control.Monad.Reader
 import qualified Data.ByteString.Lazy as B
 import qualified Data.ByteString as S
 import Network.HTTP (urlEncodeVars)
-import Data.Time.Clock
+import Data.Time (getCurrentTime, addUTCTime)
+import Data.Time.Clock (diffUTCTime, UTCTime(..))
 import Data.FileStore
 import System.Log.Logger (logM, Priority(..))
 
@@ -110,9 +111,9 @@ randomPage :: Handler
 randomPage = do
   fs <- getFileStore
   files <- liftIO $ index fs
-  let pages = map dropExtension $
-                filter (\f -> isPageFile f && not (isDiscussPageFile f)) files
   base' <- getWikiBase
+  let pages = map dropExtension $
+              filter (\f -> isPageFile f && not (isDiscussPageFile f)) files
   if null pages
      then error "No pages found!"
      else do
@@ -471,9 +472,9 @@ getDiff :: FileStore -> FilePath -> Maybe RevisionId -> Maybe RevisionId
         -> IO Html
 getDiff fs file from to = do
   rawDiff <- diff fs file from to
-  let diffLineToHtml (B, xs) = thespan << unlines xs
-      diffLineToHtml (F, xs) = thespan ! [theclass "deleted"] << unlines xs
-      diffLineToHtml (S, xs) = thespan ! [theclass "added"]   << unlines xs
+  let diffLineToHtml (Both xs _) = thespan << unlines xs
+      diffLineToHtml (First xs) = thespan ! [theclass "deleted"] << unlines xs
+      diffLineToHtml (Second xs) = thespan ! [theclass "added"]  << unlines xs
   return $ h2 ! [theclass "revision"] <<
              ("Changes from " ++ fromMaybe "beginning" from ++
               " to " ++ fromMaybe "current" to) +++
@@ -768,7 +769,7 @@ feedHandler = do
   let file = (path' `orIfNull` "_site") <.> "feed"
   let mbPath = if null path' then Nothing else Just path'
   -- first, check for a cached version that is recent enough
-  now <- liftIO $ getCurrentTime
+  now <- liftIO getCurrentTime
   let isRecentEnough t = truncate (diffUTCTime now t) < 60 * feedRefreshTime cfg
   mbCached <- lookupCache file
   case mbCached of

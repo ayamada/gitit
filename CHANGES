@@ -1,4 +1,85 @@
-Version 0.10.0.2 released 1 Nov 2012
+Version 0.10.3.1 released 19 Mar 2013
+
+*   Fixed filename encoding problem affecting caching,
+    for gitit compiled with GHC 7.4 or later.
+
+*   Fixed padding on some buttons (akerbos).
+
+*   Specify correct format in header for initial pages (benmachine).
+
+Version 0.10.3 released 09 Mar 2013
+
+*   Allow latest versions of pandoc, blaze-html, HStringTemplate.
+
+*   Fixed duplicate ids in user box.
+
+*   Added `mathjax-script` option, specifies the mathjax script to
+    use. (Dmitry Gerasimov.)
+
+*   Set focus on editedText on page load.  (Mathieu Larose.)
+
+*   Added `address` config option.  (Matieu Larose.)
+
+Version 0.10.2 released 09 Feb 2013
+
+*   Updated to work with pandoc 1.10.
+
+*   Fixed path for MathMLInHTML.js script.  Closes #345.
+    Thanks to tstgruby.
+
+*   Updated interwiki plugin (gwern).
+
+*   Made it possible to export pages with images stored in the
+    repository itself (as opposed to the static directory).  Thanks
+    to Claudio Bley for the patch.
+
+Version 0.10.1.2 released 11 Jan 2013
+
+*   Fixed regression in option parsing.  An earlier patch
+    caused the '-f' option not to work.  Closes #336.
+
+Version 0.10.1.1 released 01 Jan 2013
+
+*   Allow compilation with directory < 1.2.
+
+Version 0.10.1 released 31 Dec 2012
+
+*   Fixed duplicate dropExtension on categoryPage.  (atsuo yamada)
+    This created problems with categories containing periods.
+
+*   Fixed duplicate unescaping of HTML entities. (atsuo yamada)
+
+*   Supply $revision$ at _diff if "Changes from beginning to..."
+    (atsuo yamada)
+
+*   MathJax rendering is now working in edit preview mode
+    (Dmitry Gerasimov).
+
+*   Upgrade directory package dependency to 1.2, and
+    fix compilation issue with GHC 7.6.1 (Bin Jin).
+
+*   Allow metadata keys to include digits, _, -.  Closes #328.
+
+*   Don't read config for --help or --version (Ben Millwood).
+    Also involves a refactor of options into those that make the program
+    quit immediately, and those that just alter the configuration.
+
+*   Updated to use filestore 0.6 (new diff API).
+    Thanks to markwright for partial patch.
+
+*   Include format metadata in default installed pages.
+    This allows them to continue working when the user changes the
+    default page format.  Closes #329.
+
+*   Added explicit path to Gitit User's Guide in default front page.
+
+*   Fix Gitit User's Guide link on front page.
+    Previously it was broken due to "smart punctuation."
+
+*   Fixed validation messages.  Switched from using lookRead "messages"
+    to using looks "message" for messages.  Closes #294.
+
+Version 0.10.0.2 released 02 Nov 2012
 
 *   Raised version bounds for dependencies.
 
