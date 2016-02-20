@@ -553,9 +553,9 @@ wikiLinksTransform pandoc
 -- | Convert links with no URL to wikilinks.
 convertWikiLinks :: Config -> Inline -> Inline
 convertWikiLinks cfg (Link ref ("", "")) | useAbsoluteUrls cfg =
-  Link ref (baseUrl cfg </> inlinesToURL ref, "Go to wiki page")
+  Link ref (baseUrl cfg </> inlinesToURL ref, "")
 convertWikiLinks _cfg (Link ref ("", "")) =
-  Link ref (inlinesToURL ref, "Go to wiki page")
+  Link ref (inlinesToURL ref, "")
 convertWikiLinks _cfg x = x
 
 -- | Derives a URL from a list of Pandoc Inline elements.
